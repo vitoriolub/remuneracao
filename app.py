@@ -31,36 +31,26 @@ arquivo = st.sidebar.file_uploader(
 # ==================================================
 
 st.markdown(
-    f"""
+    """
     <style>
 
-    /* Cabeçalho das colunas */
-    .ag-header {{
-        background-color: #003366 !important;
-    }}
+    div[data-testid="stDataFrame"] table {
+        text-align: center;
+    }
 
-    .ag-header-cell {{
-        background-color: #003366 !important;
-    }}
-
-    .ag-header-cell-text {{
-        color: white !important;
-        font-weight: bold !important;
-        font-size: 14px !important;
-    }}
+    div[data-testid="stDataFrame"] th {
+        text-align: center !important;
+    }
 
     </style>
     """,
     unsafe_allow_html=True
 )
 
-st.markdown(
-    '<div class="titulo">Remuneração Comercial</div>',
-    unsafe_allow_html=True
-)
+st.title("📊 Remuneração Comercial")
 
 # ==================================================
-# FUNÇÃO DE NORMALIZAÇÃO
+# NORMALIZAÇÃO DE COLUNAS
 # ==================================================
 
 def normalizar_colunas(df):
@@ -76,6 +66,14 @@ def normalizar_colunas(df):
             .replace("Ç", "C")
             .replace("Ã", "A")
             .replace("Á", "A")
+            .replace("Â", "A")
+            .replace("É", "E")
+            .replace("Ê", "E")
+            .replace("Í", "I")
+            .replace("Ó", "O")
+            .replace("Ô", "O")
+            .replace("Õ", "O")
+            .replace("Ú", "U")
         )
 
         if "SUPERV" in nome:
@@ -88,6 +86,77 @@ def normalizar_colunas(df):
             mapa[col] = "TOTAL FINAL"
 
     return df.rename(columns=mapa)
+
+# ==================================================
+# FORMATAÇÃO BRASILEIRA
+# ==================================================
+
+def formato_brasileiro(valor):
+
+    if pd.isna(valor):
+        return ""
+
+    if isinstance(valor, (int, float)):
+        return (
+            f"{valor:,.2f}"
+            .replace(",", "X")
+            .replace(".", ",")
+            .replace("X", ".")
+        )
+
+    return valor
+
+# ==================================================
+# FORMATAÇÃO CONDICIONAL
+# ==================================================
+
+def colorir_percentual(valor):
+
+    try:
+
+        if pd.isna(valor):
+            return ""
+
+        if isinstance(valor, str):
+
+            valor = (
+                valor
+                .replace("%", "")
+                .replace(".", "")
+                .replace(",", ".")
+            )
+
+            valor = float(valor)
+
+        if valor <= 1.5:
+            valor = valor * 100
+
+        if valor < 80:
+
+            return """
+            background-color:#F8D7DA;
+            color:black;
+            font-weight:bold;
+            """
+
+        elif valor < 100:
+
+            return """
+            background-color:#FFF3CD;
+            color:black;
+            font-weight:bold;
+            """
+
+        else:
+
+            return """
+            background-color:#D4EDDA;
+            color:black;
+            font-weight:bold;
+            """
+
+    except:
+        return ""
 
 # ==================================================
 # LEITURA
@@ -112,7 +181,7 @@ if arquivo:
         # FILTROS
         # ==========================================
 
-        st.subheader("Tabela Personalizada")
+        st.subheader("Filtros")
 
         col1, col2 = st.columns(2)
 
@@ -135,6 +204,7 @@ if arquivo:
                 )
 
             else:
+
                 supervisores = []
 
         with col2:
@@ -156,6 +226,7 @@ if arquivo:
                 )
 
             else:
+
                 vendedores = []
 
         # ==========================================
@@ -179,40 +250,94 @@ if arquivo:
             ]
 
         # ==========================================
-        # ESCOLHER COLUNAS
+        # ESCOLHA DE COLUNAS
         # ==========================================
+
+        st.markdown("---")
 
         colunas = st.multiselect(
             "Escolha as colunas",
             df_filtrado.columns.tolist(),
-            default=df_filtrado.columns.tolist()[:5]
+            default=df_filtrado.columns.tolist()
         )
 
         # ==========================================
         # RENOMEAR COLUNAS
         # ==========================================
 
-        st.markdown("---")
         st.subheader("Renomear Colunas")
 
         novos_nomes = {}
 
         for coluna in colunas:
 
-            novo_nome = st.text_input(
+            novos_nomes[coluna] = st.text_input(
                 f"Nome para '{coluna}'",
                 value=coluna
             )
-
-            novos_nomes[coluna] = novo_nome
 
         tabela_final = (
             df_filtrado[colunas]
             .rename(columns=novos_nomes)
         )
 
+        # ==========================================
+        # SEMÁFORO
+        # ==========================================
+
+        st.subheader("Formatação Condicional")
+
+        colunas_percentuais = st.multiselect(
+            "Selecione as colunas para aplicar o semáforo",
+            tabela_final.columns.tolist()
+        )
+
+        # ==========================================
+        # FORMATAÇÃO
+        # ==========================================
+
+        formatacao = {}
+
+        for col in tabela_final.columns:
+
+            if pd.api.types.is_numeric_dtype(
+                tabela_final[col]
+            ):
+
+                formatacao[col] = formato_brasileiro
+
+        styler = (
+            tabela_final.style
+            .format(formatacao)
+            .set_properties(**{
+                "text-align": "center"
+            })
+            .set_table_styles([
+                {
+                    "selector": "th",
+                    "props": [
+                        ("text-align", "center"),
+                        ("font-weight", "bold")
+                    ]
+                }
+            ])
+        )
+
+        for coluna in colunas_percentuais:
+
+            styler = styler.map(
+                colorir_percentual,
+                subset=[coluna]
+            )
+
+        # ==========================================
+        # TABELA FINAL
+        # ==========================================
+
+        st.subheader("Tabela Personalizada")
+
         st.dataframe(
-            tabela_final,
+            styler,
             use_container_width=True
         )
 
@@ -220,13 +345,19 @@ if arquivo:
         # DOWNLOAD
         # ==========================================
 
-        excel = tabela_final.to_csv(
-            index=False
-        ).encode("utf-8")
+        csv = (
+            tabela_final
+            .to_csv(
+                index=False,
+                sep=";",
+                encoding="utf-8-sig"
+            )
+            .encode("utf-8-sig")
+        )
 
         st.download_button(
-            "Baixar Resultado",
-            excel,
+            "📥 Baixar Resultado",
+            csv,
             "resultado.csv",
             "text/csv"
         )
