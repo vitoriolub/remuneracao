@@ -117,7 +117,13 @@ def colorir_percentual(valor):
         if pd.isna(valor):
             return ""
 
+        # Converte qualquer tipo para float
         if isinstance(valor, str):
+
+            valor = valor.strip()
+
+            if valor == "":
+                return ""
 
             valor = (
                 valor
@@ -128,34 +134,44 @@ def colorir_percentual(valor):
 
             valor = float(valor)
 
-        if valor <= 1.5:
-            valor = valor * 100
+        else:
+
+            valor = float(valor)
+
+        # Se veio em formato decimal
+        # Ex.: 0.85 = 85%
+        #      1.04 = 104%
+        if valor <= 2:
+            valor *= 100
+
+        # Semáforo
 
         if valor < 80:
 
-            return """
-            background-color:#F8D7DA;
-            color:black;
-            font-weight:bold;
-            """
+            return (
+                "background-color:#F8D7DA;"
+                "color:black;"
+                "font-weight:bold;"
+            )
 
         elif valor < 100:
 
-            return """
-            background-color:#FFF3CD;
-            color:black;
-            font-weight:bold;
-            """
+            return (
+                "background-color:#FFF3CD;"
+                "color:black;"
+                "font-weight:bold;"
+            )
 
         else:
 
-            return """
-            background-color:#D4EDDA;
-            color:black;
-            font-weight:bold;
-            """
+            return (
+                "background-color:#D4EDDA;"
+                "color:black;"
+                "font-weight:bold;"
+            )
 
-    except:
+    except Exception:
+
         return ""
 
 # ==================================================
@@ -211,18 +227,29 @@ if arquivo:
 
             if "Vendedor" in df.columns:
 
-                vendedores = st.multiselect(
-                    "Consultores",
-                    sorted(
-                        df["Vendedor"]
+                if supervisores:
+
+                    lista_vendedores = sorted(
+                        df.loc[
+                            df["Supervisor"].isin(supervisores),
+                            "Vendedor"
+                        ]
                         .dropna()
                         .unique()
-                    ),
-                    default=sorted(
+                    )
+
+                else:
+
+                    lista_vendedores = sorted(
                         df["Vendedor"]
                         .dropna()
                         .unique()
                     )
+
+                vendedores = st.multiselect(
+                    "Consultores",
+                    lista_vendedores,
+                    default=lista_vendedores
                 )
 
             else:
@@ -298,38 +325,72 @@ if arquivo:
 
         formatacao = {}
 
+        # Formatação brasileira para colunas numéricas
         for col in tabela_final.columns:
 
-            if pd.api.types.is_numeric_dtype(
-                tabela_final[col]
-            ):
+            if pd.api.types.is_numeric_dtype(tabela_final[col]):
 
                 formatacao[col] = formato_brasileiro
 
-        styler = (
-            tabela_final.style
-            .format(formatacao)
-            .set_properties(**{
-                "text-align": "center"
-            })
-            .set_table_styles([
-                {
-                    "selector": "th",
-                    "props": [
-                        ("text-align", "center"),
-                        ("font-weight", "bold")
-                    ]
+        # Cria o Styler
+        styler = tabela_final.style.format(formatacao)
+
+        # ==========================================
+        # ALINHAMENTO DAS COLUNAS
+        # ==========================================
+
+        # Colunas numéricas ficam centralizadas
+        colunas_numericas = tabela_final.select_dtypes(
+            include="number"
+        ).columns
+
+        if len(colunas_numericas) > 0:
+
+            styler = styler.set_properties(
+                subset=colunas_numericas,
+                **{
+                    "text-align": "center"
                 }
-            ])
-        )
+            )
+
+        # Colunas texto ficam à esquerda
+        colunas_texto = tabela_final.select_dtypes(
+            exclude="number"
+        ).columns
+
+        if len(colunas_texto) > 0:
+
+            styler = styler.set_properties(
+                subset=colunas_texto,
+                **{
+                    "text-align": "left"
+                }
+            )
+
+        # Cabeçalhos centralizados
+        styler = styler.set_table_styles([
+            {
+                "selector": "th",
+                "props": [
+                    ("text-align", "center"),
+                    ("font-weight", "bold")
+                ]
+            }
+        ])
+
+        # ==========================================
+        # SEMÁFORO
+        # ==========================================
 
         for coluna in colunas_percentuais:
 
-            styler = styler.map(
-                colorir_percentual,
-                subset=[coluna]
-            )
+            if coluna in tabela_final.columns:
 
+                styler = styler.map(
+                colorir_percentual,
+                subset=pd.IndexSlice[:, [coluna]]
+            )
+                
         # ==========================================
         # TABELA FINAL
         # ==========================================
